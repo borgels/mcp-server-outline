@@ -18,6 +18,8 @@ Bearer API token (Outline → Settings → API → Create). The token inherits i
 
 See `.env.example`. Required: `OUTLINE_BASE_URL` (the server appends `/api`), `OUTLINE_API_TOKEN`.
 
+For the HTTP transport set `MCP_HTTP_TOKEN`; the bearer token is compared in constant time. API method names are restricted to the `collection.method` form, so caller input is never placed in the URL path.
+
 ## Run
 
 ```bash
