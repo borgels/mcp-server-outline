@@ -1,3 +1,21 @@
+export function trustForwardedUser(): boolean {
+  return process.env.OUTLINE_TRUST_FORWARDED_USER === 'true';
+}
+
+/**
+ * Per-user isolation: in hosted (per-user key) mode every tool needs the
+ * gateway-verified identity. Without it the server refuses — nobody gets
+ * anonymous or shared access to anyone's Playbook content.
+ */
+export function requireUser(onBehalfOf: string | undefined): string {
+  if (!onBehalfOf) {
+    throw new Error(
+      'No verified user identity. This connector only works behind a gateway that forwards the signed-in user (X-MCP-User); each user reads Playbook with their own personal API key.',
+    );
+  }
+  return onBehalfOf;
+}
+
 /**
  * Read tools are always on. Write tools require OUTLINE_ENABLE_WRITES=true.
  * The genuinely destructive Outline operations are deliberately NOT exposed
@@ -24,6 +42,12 @@ export interface OutlinePolicyDecision {
   reason: string;
 }
 
+/**
+ * Enrollment tools manage the caller's own personal API key on this server —
+ * they touch no Outline content, so they are never gated on OUTLINE_ENABLE_WRITES.
+ */
+const ENROLLMENT_TOOLS = new Set(['outline_connect', 'outline_status', 'outline_disconnect']);
+
 const READ_TOOLS = new Set([
   'outline_search_capabilities',
   'outline_whoami',
@@ -47,6 +71,9 @@ const WRITE_TOOLS = new Set([
 ]);
 
 export function checkToolPolicy(toolName: string): OutlinePolicyDecision {
+  if (ENROLLMENT_TOOLS.has(toolName)) {
+    return { allowed: true, reason: 'enrollment tool (manages the caller’s own API key)' };
+  }
   if (READ_TOOLS.has(toolName)) {
     return { allowed: true, reason: 'read-only Outline tool' };
   }

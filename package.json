@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-outline",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for the Outline knowledge base (wiki) API.",
   "type": "module",
   "main": "./dist/stdio.js",

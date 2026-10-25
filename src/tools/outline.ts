@@ -3,10 +3,24 @@ import { z } from 'zod/v4';
 import { formatUnknownError } from '../errors.js';
 import { writeAuditEvent } from '../outline/audit.js';
 import { READ_TOOL_ANNOTATIONS, WRITE_TOOL_ANNOTATIONS, searchCapabilities } from '../outline/capabilities.js';
-import type { OutlineClient } from '../outline/client.js';
-import { assertWritesEnabled, checkToolPolicy } from '../outline/policy.js';
+import type { OutlineApi, OutlineClient } from '../outline/client.js';
+import { assertWritesEnabled, checkToolPolicy, requireUser } from '../outline/policy.js';
+import type { KeyStore } from '../outline/store.js';
 
-export function registerOutlineTools(server: McpServer, client: OutlineClient): void {
+export interface RegisterOptions {
+  /** Per-user key store — present in hosted (per-user API key) mode; absent for stdio/env-token mode. */
+  store?: KeyStore;
+  /** Gateway-verified end-user identity (X-MCP-User). */
+  onBehalfOf?: string;
+}
+
+interface ToolContext extends RegisterOptions {
+  client: OutlineClient;
+}
+
+export function registerOutlineTools(server: McpServer, client: OutlineClient, options: RegisterOptions = {}): void {
+  const ctx: ToolContext = { client, ...options };
+
   server.registerTool(
     'outline_search_capabilities',
     {
@@ -15,7 +29,73 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       inputSchema: { query: z.string().trim().default(''), limit: z.number().int().min(1).max(50).default(20) },
       annotations: READ_TOOL_ANNOTATIONS,
     },
-    async input => run('outline_search_capabilities', input, async () => json(searchCapabilities(input.query, input.limit))),
+    async input => runPlain('outline_search_capabilities', input, ctx, async () => json(searchCapabilities(input.query, input.limit))),
+  );
+
+  // --- enrollment: each user links their OWN personal Outline API key ---
+
+  server.registerTool(
+    'outline_connect',
+    {
+      title: 'Connect your Playbook account',
+      description:
+        'Link YOUR personal Playbook (Outline) API key. Returns a one-time browser link where you paste the key — never paste it into the chat. Create the key in Playbook → Settings → API. Needed once; the key only ever gives what you can already see.',
+      inputSchema: {},
+      annotations: { ...WRITE_TOOL_ANNOTATIONS, openWorldHint: false },
+    },
+    async input =>
+      runPlain('outline_connect', input, ctx, async () => {
+        const store = requireStore(ctx);
+        const user = requireUser(ctx.onBehalfOf);
+        const already = store.getKeyInfo(user);
+        const state = store.createState(user);
+        return json({
+          alreadyConnected: Boolean(already),
+          enrollmentUrl: `${enrollmentBaseUrl()}/outline/enroll?state=${state}`,
+          instructions:
+            'Open enrollmentUrl in your browser and paste YOUR own Playbook API key (Playbook → Settings → API → New API key). The link is single-use and expires in 10 minutes. The key is stored encrypted and bound to you.',
+        });
+      }),
+  );
+
+  server.registerTool(
+    'outline_status',
+    {
+      title: 'Playbook Connection Status',
+      description: 'Whether your personal Playbook API key is linked here, and which Outline user it resolves to. Never returns the key.',
+      inputSchema: {},
+      annotations: READ_TOOL_ANNOTATIONS,
+    },
+    async input =>
+      runPlain('outline_status', input, ctx, async () => {
+        const store = requireStore(ctx);
+        const info = store.getKeyInfo(requireUser(ctx.onBehalfOf));
+        if (!info) {
+          return json({ connected: false, hint: 'Run outline_connect to link your personal API key.' });
+        }
+        return json({
+          connected: true,
+          outlineUserName: info.outlineUserName,
+          outlineEmail: info.outlineEmail,
+          workspaceName: info.workspaceName,
+          connectedAt: new Date(info.connectedAt).toISOString(),
+        });
+      }),
+  );
+
+  server.registerTool(
+    'outline_disconnect',
+    {
+      title: 'Disconnect Playbook',
+      description: 'Remove your stored Playbook API key from this server. Revoke the key itself in Playbook → Settings → API.',
+      inputSchema: {},
+      annotations: { ...WRITE_TOOL_ANNOTATIONS, destructiveHint: true, openWorldHint: false },
+    },
+    async input =>
+      runPlain('outline_disconnect', input, ctx, async () => {
+        const store = requireStore(ctx);
+        return json({ disconnected: store.deleteKey(requireUser(ctx.onBehalfOf)) });
+      }),
   );
 
   server.registerTool(
@@ -26,7 +106,7 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       inputSchema: {},
       annotations: READ_TOOL_ANNOTATIONS,
     },
-    async input => run('outline_whoami', input, async () => json(await client.call('auth.info'))),
+    async input => run('outline_whoami', input, ctx, async api => json(await api.call('auth.info'))),
   );
 
   server.registerTool(
@@ -47,9 +127,9 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_search', input, async () =>
+      run('outline_search', input, ctx, async api =>
         json(
-          await client.call('documents.search', {
+          await api.call('documents.search', {
             query: input.query,
             collectionId: input.collectionId,
             userId: input.userId,
@@ -76,7 +156,7 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_list_documents', input, async () => {
+      run('outline_list_documents', input, ctx, async api => {
         const method =
           input.filter === 'drafts'
             ? 'documents.drafts'
@@ -86,7 +166,7 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
                 ? 'documents.deleted'
                 : 'documents.list';
         return json(
-          await client.listAll(method, {
+          await api.listAll(method, {
             collectionId: input.collectionId,
             limit: input.limit ?? 25,
             offset: input.offset ?? 0,
@@ -107,8 +187,8 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_get_document', input, async () =>
-        json(await client.call(input.asMarkdown ? 'documents.export' : 'documents.info', { id: input.id })),
+      run('outline_get_document', input, ctx, async api =>
+        json(await api.call(input.asMarkdown ? 'documents.export' : 'documents.info', { id: input.id })),
       ),
   );
 
@@ -121,8 +201,8 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_list_collections', input, async () =>
-        json(await client.listAll('collections.list', { limit: input.limit ?? 25, offset: input.offset ?? 0 })),
+      run('outline_list_collections', input, ctx, async api =>
+        json(await api.listAll('collections.list', { limit: input.limit ?? 25, offset: input.offset ?? 0 })),
       ),
   );
 
@@ -135,12 +215,12 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_get_collection', input, async () => {
-        const info = await client.call('collections.info', { id: input.id });
+      run('outline_get_collection', input, ctx, async api => {
+        const info = await api.call('collections.info', { id: input.id });
         if (!input.includeStructure) {
           return json(info);
         }
-        const structure = await client.call('collections.documents', { id: input.id });
+        const structure = await api.call('collections.documents', { id: input.id });
         return json({ collection: info, structure });
       }),
   );
@@ -158,8 +238,8 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_list_comments', input, async () =>
-        json(await client.listAll('comments.list', { documentId: input.documentId, limit: input.limit ?? 25, offset: input.offset ?? 0 })),
+      run('outline_list_comments', input, ctx, async api =>
+        json(await api.listAll('comments.list', { documentId: input.documentId, limit: input.limit ?? 25, offset: input.offset ?? 0 })),
       ),
   );
 
@@ -177,11 +257,11 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_list_revisions', input, async () => {
+      run('outline_list_revisions', input, ctx, async api => {
         if (input.revisionId) {
-          return json(await client.call('revisions.info', { id: input.revisionId }));
+          return json(await api.call('revisions.info', { id: input.revisionId }));
         }
-        return json(await client.listAll('revisions.list', { documentId: input.documentId, limit: input.limit ?? 25, offset: input.offset ?? 0 }));
+        return json(await api.listAll('revisions.list', { documentId: input.documentId, limit: input.limit ?? 25, offset: input.offset ?? 0 }));
       }),
   );
 
@@ -202,9 +282,9 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: WRITE_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_create_document', input, async () => {
+      run('outline_create_document', input, ctx, async api => {
         assertWritesEnabled('outline_create_document');
-        return json(await client.call('documents.create', input));
+        return json(await api.call('documents.create', input));
       }),
   );
 
@@ -223,9 +303,9 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: WRITE_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_update_document', input, async () => {
+      run('outline_update_document', input, ctx, async api => {
         assertWritesEnabled('outline_update_document');
-        return json(await client.call('documents.update', input));
+        return json(await api.call('documents.update', input));
       }),
   );
 
@@ -242,12 +322,12 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: WRITE_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_move_document', input, async () => {
+      run('outline_move_document', input, ctx, async api => {
         assertWritesEnabled('outline_move_document');
         if (!input.collectionId && !input.parentDocumentId) {
           throw new Error('Provide collectionId and/or parentDocumentId to move to.');
         }
-        return json(await client.call('documents.move', input));
+        return json(await api.call('documents.move', input));
       }),
   );
 
@@ -260,9 +340,9 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: WRITE_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_archive_document', input, async () => {
+      run('outline_archive_document', input, ctx, async api => {
         assertWritesEnabled('outline_archive_document');
-        return json(await client.call(input.action === 'archive' ? 'documents.archive' : 'documents.restore', { id: input.id }));
+        return json(await api.call(input.action === 'archive' ? 'documents.archive' : 'documents.restore', { id: input.id }));
       }),
   );
 
@@ -275,10 +355,10 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: WRITE_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_delete_document', input, async () => {
+      run('outline_delete_document', input, ctx, async api => {
         assertWritesEnabled('outline_delete_document');
         // Never pass permanent:true — soft-delete to Trash only.
-        return json(await client.call('documents.delete', { id: input.id }));
+        return json(await api.call('documents.delete', { id: input.id }));
       }),
   );
 
@@ -295,9 +375,9 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: WRITE_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_create_comment', input, async () => {
+      run('outline_create_comment', input, ctx, async api => {
         assertWritesEnabled('outline_create_comment');
-        return json(await client.call('comments.create', input));
+        return json(await api.call('comments.create', input));
       }),
   );
 
@@ -317,32 +397,78 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
       annotations: WRITE_TOOL_ANNOTATIONS,
     },
     async input =>
-      run('outline_manage_collection', input, async () => {
+      run('outline_manage_collection', input, ctx, async api => {
         assertWritesEnabled('outline_manage_collection');
         if (input.action === 'create') {
           if (!input.name) throw new Error('name is required to create a collection.');
-          return json(await client.call('collections.create', input));
+          return json(await api.call('collections.create', input));
         }
         if (!input.id) throw new Error('id is required to update a collection.');
-        return json(await client.call('collections.update', input));
+        return json(await api.call('collections.update', input));
       }),
   );
 }
 
-async function run<T>(tool: string, input: unknown, call: () => Promise<T>): Promise<T> {
+function requireStore(ctx: ToolContext): KeyStore {
+  if (!ctx.store) {
+    throw new Error('This Outline MCP instance uses a server-configured token; there is no per-user key to connect.');
+  }
+  return ctx.store;
+}
+
+/** Public origin of this instance — where the browser reaches /outline/enroll. */
+function enrollmentBaseUrl(): string {
+  const base = process.env.OUTLINE_PUBLIC_BASE_URL;
+  if (!base) {
+    throw new Error('Missing OUTLINE_PUBLIC_BASE_URL — the server does not know its own public URL for the enrollment link.');
+  }
+  return base.replace(/\/+$/, '');
+}
+
+/**
+ * Resolve the Outline client for this call. In hosted mode that is the caller's
+ * own personal API key from the encrypted store — there is no shared fallback,
+ * so an unenrolled user simply cannot read anything.
+ */
+function resolveApi(ctx: ToolContext): OutlineApi {
+  if (!ctx.store) {
+    return ctx.client; // stdio/local: single-user, token from OUTLINE_API_TOKEN
+  }
+  const user = requireUser(ctx.onBehalfOf);
+  const record = ctx.store.getKey(user);
+  if (!record) {
+    throw new Error(
+      'Your personal Playbook API key is not linked yet. Run outline_connect and paste your key in the browser form it returns.',
+    );
+  }
+  return ctx.client.as(record.apiToken);
+}
+
+/** Tools that talk to Outline: policy + audit, called with the caller's own client. */
+async function run<T>(tool: string, input: unknown, ctx: ToolContext, call: (api: OutlineApi) => Promise<T>): Promise<T> {
+  return audited(tool, input, ctx, () => call(resolveApi(ctx)));
+}
+
+/** Tools that touch no Outline content (discovery, enrollment): no key needed. */
+async function runPlain<T>(tool: string, input: unknown, ctx: ToolContext, call: () => Promise<T>): Promise<T> {
+  return audited(tool, input, ctx, call);
+}
+
+async function audited<T>(tool: string, input: unknown, ctx: ToolContext, call: () => Promise<T>): Promise<T> {
   const policy = checkToolPolicy(tool);
   const target = auditTarget(input);
+  const actingAs = ctx.onBehalfOf;
   if (!policy.allowed) {
-    await writeAuditEvent({ tool, action: 'policy_denied', target, reason: policy.reason });
+    await writeAuditEvent({ tool, actingAs, action: 'policy_denied', target, reason: policy.reason });
     throw new Error(policy.reason);
   }
-  await writeAuditEvent({ tool, action: 'start', target, reason: policy.reason });
+  await writeAuditEvent({ tool, actingAs, action: 'start', target, reason: policy.reason });
   try {
     const result = await call();
-    await writeAuditEvent({ tool, action: 'finish', target, status: 'ok' });
+    await writeAuditEvent({ tool, actingAs, action: 'finish', target, status: 'ok' });
     return result;
   } catch (error) {
-    await writeAuditEvent({ tool, action: 'error', target, status: 'error', error: formatUnknownError(error) });
+    await writeAuditEvent({ tool, actingAs, action: 'error', target, status: 'error', error: formatUnknownError(error) });
     throw error;
   }
 }

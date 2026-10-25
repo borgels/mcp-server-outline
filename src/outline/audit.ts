@@ -4,6 +4,8 @@ import { formatUnknownError } from '../errors.js';
 
 export interface OutlineAuditEvent {
   requestId?: string;
+  /** Gateway-verified identity the call ran as (same value the gateway logs). */
+  actingAs?: string;
   tool: string;
   action: 'start' | 'finish' | 'error' | 'policy_denied';
   target?: unknown;
@@ -21,6 +23,7 @@ export async function writeAuditEvent(event: OutlineAuditEvent): Promise<void> {
   const record = {
     timestamp: new Date().toISOString(),
     requestId: event.requestId ?? randomUUID(),
+    actingAs: event.actingAs,
     tool: event.tool,
     action: event.action,
     targetHash: event.target === undefined ? undefined : hashValue(JSON.stringify(event.target)),

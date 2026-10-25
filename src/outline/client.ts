@@ -1,16 +1,35 @@
 import { OutlineHttpError } from '../errors.js';
 
 export interface OutlineClientOptions {
+  /** Fallback token — only used in stdio/local mode. The hosted server passes each user's own key per call. */
   apiToken?: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }
 
+export interface CallOptions {
+  /** The calling user's personal Outline API token. */
+  apiToken?: string;
+  isRetry?: boolean;
+}
+
+/** A client bound to one user's API token — what the tools actually call. */
+export interface OutlineApi {
+  call<T = unknown>(method: string, body?: Record<string, unknown>): Promise<T>;
+  listAll<T = unknown>(
+    method: string,
+    body?: Record<string, unknown>,
+    maxPages?: number,
+  ): Promise<{ data: T[]; pagesFetched: number; more: boolean }>;
+}
+
 /**
  * Client for the Outline API. Outline is RPC-over-HTTP: every endpoint is
  * POST /api/<resource>.<method> with a JSON body, including reads. Auth is a
- * Bearer token that inherits the creating user's permissions. Lists use
+ * Bearer token that inherits the creating user's permissions — this client is
+ * shared per instance (base URL) and takes the token per call, so one process
+ * can serve many users without any of them sharing access. Lists use
  * {limit, offset} and return {data, pagination:{offset,limit,nextPath}}.
  */
 export class OutlineClient {
@@ -31,10 +50,19 @@ export class OutlineClient {
     this.timeoutMs = options.timeoutMs ?? Number(process.env.OUTLINE_TIMEOUT_MS ?? 30_000);
   }
 
+  /** Bind this client to one user's personal token. */
+  as(apiToken: string): OutlineApi {
+    return {
+      call: (method, body) => this.call(method, body, { apiToken }),
+      listAll: (method, body, maxPages) => this.listAll(method, body, maxPages, { apiToken }),
+    };
+  }
+
   /** Call POST /api/<method> with a JSON body. Retries once on 429 honoring Retry-After. */
-  async call<T = unknown>(method: string, body: Record<string, unknown> = {}, isRetry = false): Promise<T> {
-    if (!this.apiToken) {
-      throw new Error('Missing OUTLINE_API_TOKEN. Set it in the MCP server environment.');
+  async call<T = unknown>(method: string, body: Record<string, unknown> = {}, options: CallOptions = {}): Promise<T> {
+    const apiToken = options.apiToken ?? this.apiToken;
+    if (!apiToken) {
+      throw new Error('No Outline API token for this call. Run outline_connect to link your personal API key.');
     }
     if (!/^[a-zA-Z]+\.[a-zA-Z_]+$/.test(method)) {
       throw new Error(`Refusing to call non-standard Outline method: ${method}`);
@@ -46,16 +74,16 @@ export class OutlineClient {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiToken}`,
+        Authorization: `Bearer ${apiToken}`,
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
 
-    if (response.status === 429 && !isRetry) {
+    if (response.status === 429 && !options.isRetry) {
       const retryAfter = Number(response.headers.get('retry-after') ?? 1);
       await new Promise(r => setTimeout(r, Math.min(retryAfter, 10) * 1000));
-      return this.call<T>(method, body, true);
+      return this.call<T>(method, body, { ...options, isRetry: true });
     }
 
     const payload = await readBody(response);
@@ -76,6 +104,7 @@ export class OutlineClient {
     method: string,
     body: Record<string, unknown> = {},
     maxPages = 10,
+    options: CallOptions = {},
   ): Promise<{ data: T[]; pagesFetched: number; more: boolean }> {
     const limit = Math.min(Number(body.limit ?? 25), 100);
     const out: T[] = [];
@@ -83,7 +112,11 @@ export class OutlineClient {
     let pages = 0;
     let more = false;
     for (; pages < maxPages; ) {
-      const resp = await this.call<{ data?: T[]; pagination?: { nextPath?: string } }>(method, { ...body, limit, offset });
+      const resp = await this.call<{ data?: T[]; pagination?: { nextPath?: string } }>(
+        method,
+        { ...body, limit, offset },
+        options,
+      );
       out.push(...(resp.data ?? []));
       pages += 1;
       if (!resp.pagination?.nextPath || (resp.data?.length ?? 0) < limit) {
