@@ -11,7 +11,7 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
     'outline_search_capabilities',
     {
       title: 'Search Outline Capabilities',
-      description: 'Search the Outline/Playbook MCP capabilities. Use first when deciding which tool to call.',
+      description: 'Search the Outline MCP capabilities. Use first when deciding which tool to call.',
       inputSchema: { query: z.string().trim().default(''), limit: z.number().int().min(1).max(50).default(20) },
       annotations: READ_TOOL_ANNOTATIONS,
     },
@@ -22,7 +22,7 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
     'outline_whoami',
     {
       title: 'Who Am I (Outline)',
-      description: 'Show the user + workspace this Playbook token belongs to.',
+      description: 'Show the user + workspace this Outline token belongs to.',
       inputSchema: {},
       annotations: READ_TOOL_ANNOTATIONS,
     },

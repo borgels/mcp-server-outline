@@ -33,7 +33,7 @@ export class OutlineClient {
     registerSecret(this.apiToken);
     const root = trimTrailingSlash(options.baseUrl ?? process.env.OUTLINE_BASE_URL ?? '');
     if (!root) {
-      throw new Error('Missing OUTLINE_BASE_URL (e.g. https://playbook.example.com).');
+      throw new Error('Missing OUTLINE_BASE_URL (e.g. https://outline.example.com).');
     }
     assertSafeBaseUrl(root);
     this.baseUrl = root.endsWith('/api') ? root : `${root}/api`;

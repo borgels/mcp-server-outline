@@ -26,7 +26,7 @@ function makeClient(rec: Rec[], responder?: (method: string) => unknown): Outlin
       headers: { 'content-type': 'application/json' },
     });
   }) as unknown as typeof fetch;
-  return new OutlineClient({ apiToken: 'tok', baseUrl: 'https://playbook.example.com', fetchImpl });
+  return new OutlineClient({ apiToken: 'tok', baseUrl: 'https://outline.example.com', fetchImpl });
 }
 
 async function connect(client: OutlineClient) {
@@ -42,7 +42,7 @@ describe('OutlineClient', () => {
     const rec: Rec[] = [];
     const client = makeClient(rec);
     await client.call('documents.info', { id: 'x' });
-    expect(rec[0]?.url).toBe('https://playbook.example.com/api/documents.info');
+    expect(rec[0]?.url).toBe('https://outline.example.com/api/documents.info');
   });
 
   it('refuses non-standard method names', async () => {
@@ -97,7 +97,7 @@ describe('tool surface', () => {
 
 describe('OutlineClient upstream hardening', () => {
   function clientWith(fetchImpl: typeof fetch, apiToken = 'tok') {
-    return new OutlineClient({ apiToken, baseUrl: 'https://playbook.example.com', fetchImpl });
+    return new OutlineClient({ apiToken, baseUrl: 'https://outline.example.com', fetchImpl });
   }
 
   it('never follows redirects, so the token and body are not re-sent', async () => {
@@ -122,9 +122,18 @@ describe('OutlineClient upstream hardening', () => {
   });
 
   it('rejects an invalid OUTLINE_TIMEOUT_MS instead of producing NaN', () => {
+    const original = process.env.OUTLINE_TIMEOUT_MS;
     process.env.OUTLINE_TIMEOUT_MS = 'abc';
-    expect(() => new OutlineClient({ apiToken: 't', baseUrl: 'https://playbook.example.com' })).toThrow(
-      /OUTLINE_TIMEOUT_MS/,
-    );
+    try {
+      expect(() => new OutlineClient({ apiToken: 't', baseUrl: 'https://outline.example.com' })).toThrow(
+        /OUTLINE_TIMEOUT_MS/,
+      );
+    } finally {
+      if (original === undefined) {
+        delete process.env.OUTLINE_TIMEOUT_MS;
+      } else {
+        process.env.OUTLINE_TIMEOUT_MS = original;
+      }
+    }
   });
 });
