@@ -1,4 +1,13 @@
+import { readEnvInteger } from '../config-env.js';
 import { OutlineHttpError } from '../errors.js';
+import {
+  describeUrl,
+  discardBody,
+  isRedirect,
+  readErrorBody,
+  redirectRefusedMessage,
+  registerSecret,
+} from '../upstream-http.js';
 
 export interface OutlineClientOptions {
   apiToken?: string;
@@ -21,14 +30,16 @@ export class OutlineClient {
 
   constructor(options: OutlineClientOptions = {}) {
     this.apiToken = options.apiToken ?? process.env.OUTLINE_API_TOKEN;
+    registerSecret(this.apiToken);
     const root = trimTrailingSlash(options.baseUrl ?? process.env.OUTLINE_BASE_URL ?? '');
     if (!root) {
-      throw new Error('Missing OUTLINE_BASE_URL (e.g. https://playbook.example.com).');
+      throw new Error('Missing OUTLINE_BASE_URL (e.g. https://outline.example.com).');
     }
     assertSafeBaseUrl(root);
     this.baseUrl = root.endsWith('/api') ? root : `${root}/api`;
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.timeoutMs = options.timeoutMs ?? Number(process.env.OUTLINE_TIMEOUT_MS ?? 30_000);
+    this.timeoutMs =
+      options.timeoutMs ?? readEnvInteger('OUTLINE_TIMEOUT_MS', 30_000, { min: 1, max: 600_000 });
   }
 
   /** Call POST /api/<method> with a JSON body. Retries once on 429 honoring Retry-After. */
@@ -49,26 +60,35 @@ export class OutlineClient {
         Authorization: `Bearer ${this.apiToken}`,
       },
       body: JSON.stringify(body),
+      // Never follow redirects: the token and the request body would be re-sent to the new location.
+      redirect: 'manual',
       signal: AbortSignal.timeout(this.timeoutMs),
     });
 
+    if (isRedirect(response.status)) {
+      await discardBody(response);
+      throw new Error(redirectRefusedMessage('Outline API', response, 'POST', url));
+    }
+
     if (response.status === 429 && !isRetry) {
+      await discardBody(response);
       const retryAfter = Number(response.headers.get('retry-after') ?? 1);
-      await new Promise(r => setTimeout(r, Math.min(retryAfter, 10) * 1000));
+      const seconds = Number.isFinite(retryAfter) && retryAfter >= 0 ? Math.min(retryAfter, 10) : 1;
+      await new Promise(r => setTimeout(r, seconds * 1000));
       return this.call<T>(method, body, true);
     }
 
-    const payload = await readBody(response);
     if (!response.ok) {
+      const payload = await readErrorBody(response);
       throw new OutlineHttpError({
         status: response.status,
-        url,
+        url: describeUrl(url),
         payload,
         retryAfter: response.headers.get('retry-after') ?? undefined,
         fallbackMessage: typeof payload === 'string' ? payload : undefined,
       });
     }
-    return payload as T;
+    return (await readBody(response)) as T;
   }
 
   /** Fetch every page of a list method (bounded), concatenating `data`. */

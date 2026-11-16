@@ -29,7 +29,7 @@ export const OUTLINE_CAPABILITIES: OutlineCapability[] = [
   {
     id: 'outline_search_capabilities',
     title: 'Search Outline Capabilities',
-    description: 'Find the Outline/Playbook MCP tool for searching, reading, or editing wiki documents.',
+    description: 'Find the Outline MCP tool for searching, reading, or editing wiki documents.',
     risk: 'read',
     examples: [{ query: 'find document' }],
     identifierFormats: ['Tool id such as outline_search or outline_create_document.'],
@@ -39,7 +39,7 @@ export const OUTLINE_CAPABILITIES: OutlineCapability[] = [
   {
     id: 'outline_whoami',
     title: 'Who Am I (Outline)',
-    description: 'Show the user and workspace this Playbook token belongs to.',
+    description: 'Show the user and workspace this Outline token belongs to.',
     risk: 'read',
     examples: [{}],
     identifierFormats: [],
@@ -55,7 +55,7 @@ export const OUTLINE_CAPABILITIES: OutlineCapability[] = [
     examples: [{ query: 'onboarding checklist' }, { query: 'vpn', collectionId: '…', statusFilter: ['published'] }],
     identifierFormats: ['statusFilter: draft | published | archived', 'dateFilter: day | week | month | year'],
     safetyNotes: ['Only returns documents the token’s user can access.'],
-    keywords: ['search', 'søg', 'find', 'wiki', 'playbook', 'dokument'],
+    keywords: ['search', 'søg', 'find', 'wiki', 'dokument'],
   },
   {
     id: 'outline_list_documents',

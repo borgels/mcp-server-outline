@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { OutlineClient, type OutlineClientOptions } from './outline/client.js';
 import { registerOutlineTools } from './tools/outline.js';
+import { PACKAGE_VERSION } from './version.js';
 
 export interface CreateServerOptions {
   client?: OutlineClient;
@@ -8,7 +9,7 @@ export interface CreateServerOptions {
 }
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
-  const server = new McpServer({ name: 'outline', version: '0.1.0' });
+  const server = new McpServer({ name: 'outline', version: PACKAGE_VERSION });
   const client = options.client ?? new OutlineClient(options.clientOptions);
   registerOutlineTools(server, client);
   return server;

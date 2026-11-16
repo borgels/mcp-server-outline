@@ -1,3 +1,5 @@
+import { redactRegisteredSecrets, truncate } from './upstream-http.js';
+
 export interface OutlineErrorPayload {
   error?: string;
   message?: string;
@@ -47,7 +49,7 @@ export function redactSecrets(value: string): string {
         const key = match.split(separator)[0]?.trim() ?? 'secret';
         return `${key}${separator} [REDACTED]`;
       }),
-    value,
+    redactRegisteredSecrets(value),
   );
 }
 
@@ -61,14 +63,22 @@ function formatOutlineHttpError(input: {
   const payload = isOutlineErrorPayload(input.payload) ? input.payload : undefined;
   const parts = [
     `Outline API request failed with HTTP ${input.status}`,
-    payload?.code === undefined ? undefined : `code=${payload.code}`,
-    payload?.error,
-    payload?.message,
-    input.retryAfter ? `retry-after=${input.retryAfter}s` : undefined,
-    input.fallbackMessage,
+    payload?.code === undefined ? undefined : `code=${truncate(String(payload.code), 64)}`,
+    textField(payload?.error),
+    textField(payload?.message),
+    input.retryAfter ? `retry-after=${truncate(input.retryAfter, 64)}s` : undefined,
+    // Redact before truncating, so a secret is never cut in half and left partly visible.
+    input.fallbackMessage === undefined ? undefined : truncate(redactSecrets(input.fallbackMessage.trim())),
   ].filter(Boolean);
 
   return redactSecrets(parts.join(' | '));
+}
+
+function textField(value: unknown): string | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return undefined;
+  }
+  return truncate(redactSecrets(String(value)));
 }
 
 function isOutlineErrorPayload(value: unknown): value is OutlineErrorPayload {
