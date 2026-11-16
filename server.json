@@ -1,0 +1,48 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.borgels/mcp-server-outline",
+  "title": "Outline",
+  "description": "MCP server for the Outline knowledge base (wiki) API.",
+  "repository": {
+    "url": "https://github.com/borgels/mcp-server-outline",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "mcp-server-outline",
+      "version": "0.2.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "OUTLINE_BASE_URL",
+          "description": "Outline instance base URL.",
+          "isRequired": true,
+          "placeholder": "https://outline.example.com"
+        },
+        {
+          "name": "OUTLINE_API_TOKEN",
+          "description": "Outline API token (Settings, API).",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "OUTLINE_ENABLE_WRITES",
+          "description": "Enable the write tools.",
+          "format": "boolean",
+          "default": "false"
+        },
+        {
+          "name": "OUTLINE_AUDIT_LOG",
+          "description": "Path of the JSONL audit log.",
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

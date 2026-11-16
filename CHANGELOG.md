@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Published to npm and the MCP Registry from tagged releases.
+
 ## 0.2.0 (2026-11-16)
 
 HTTP transport hardening, upstream client hardening and dependency updates.
