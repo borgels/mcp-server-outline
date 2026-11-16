@@ -94,3 +94,37 @@ describe('tool surface', () => {
     expect(JSON.stringify(call?.body)).not.toContain('permanent');
   });
 });
+
+describe('OutlineClient upstream hardening', () => {
+  function clientWith(fetchImpl: typeof fetch, apiToken = 'tok') {
+    return new OutlineClient({ apiToken, baseUrl: 'https://playbook.example.com', fetchImpl });
+  }
+
+  it('never follows redirects, so the token and body are not re-sent', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      new Response(null, { status: 308, headers: { location: 'https://elsewhere.example/api/x?sig=abc' } }),
+    );
+    const error = await clientWith(fetchImpl).call('documents.list').catch((e: unknown) => e);
+    expect((error as Error).message).toMatch(/redirect \(HTTP 308\) to https:\/\/elsewhere\.example\/api\/x/);
+    expect((error as Error).message).not.toContain('sig=abc');
+    expect(fetchImpl.mock.calls[0]![1]?.redirect).toBe('manual');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('caps error bodies and redacts the configured token before truncating', async () => {
+    const token = 'configured-outline-token-0123456789';
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      new Response(`${'y'.repeat(490)}${token}${'z'.repeat(1_000_000)}`, { status: 500 }),
+    );
+    const error = await clientWith(fetchImpl, token).call('documents.list').catch((e: unknown) => e);
+    expect((error as Error).message.length).toBeLessThan(1_000);
+    expect((error as Error).message).not.toContain(token.slice(0, 10));
+  });
+
+  it('rejects an invalid OUTLINE_TIMEOUT_MS instead of producing NaN', () => {
+    process.env.OUTLINE_TIMEOUT_MS = 'abc';
+    expect(() => new OutlineClient({ apiToken: 't', baseUrl: 'https://playbook.example.com' })).toThrow(
+      /OUTLINE_TIMEOUT_MS/,
+    );
+  });
+});
