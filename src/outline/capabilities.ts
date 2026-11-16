@@ -55,7 +55,7 @@ export const OUTLINE_CAPABILITIES: OutlineCapability[] = [
     examples: [{ query: 'onboarding checklist' }, { query: 'vpn', collectionId: '…', statusFilter: ['published'] }],
     identifierFormats: ['statusFilter: draft | published | archived', 'dateFilter: day | week | month | year'],
     safetyNotes: ['Only returns documents the token’s user can access.'],
-    keywords: ['search', 'søg', 'find', 'wiki', 'playbook', 'dokument'],
+    keywords: ['search', 'søg', 'find', 'wiki', 'dokument'],
   },
   {
     id: 'outline_list_documents',
