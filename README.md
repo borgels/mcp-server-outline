@@ -54,6 +54,14 @@ authentication, for container health checks.
 - The HTTP server does not terminate TLS. Run it on loopback or a private
   network, behind a TLS-terminating proxy when traffic leaves the host.
 
+## Install
+
+```bash
+npx mcp-server-outline
+```
+
+Runs the stdio server from npm. Configure it with the environment variables in `.env.example`.
+
 ## Run
 
 ```bash
