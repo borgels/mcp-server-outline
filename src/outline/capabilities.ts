@@ -193,12 +193,144 @@ export const OUTLINE_CAPABILITIES: OutlineCapability[] = [
   },
 ];
 
-export function searchCapabilities(query: string, limit = 20): OutlineCapability[] {
+/**
+ * The embedded gateway's tools (src/gateway.ts). They have their own names
+ * and inputs; delete, archive, move and collection management are not among
+ * them.
+ */
+export const GATEWAY_CAPABILITIES: OutlineCapability[] = [
+  {
+    id: 'outline_search_capabilities',
+    title: 'Search Outline capabilities',
+    description: 'Find the Outline tool for searching, reading or writing wiki documents and comments.',
+    risk: 'read',
+    examples: [{ query: 'find document' }],
+    identifierFormats: ['Tool id such as outline_search_documents or outline_create_document.'],
+    safetyNotes: ['Discovery only.'],
+    keywords: ['discover', 'help', 'capabilities'],
+  },
+  {
+    id: 'outline_check_connection',
+    title: 'Check Outline connection',
+    description: 'Verify that Outline accepts the API key, and show the name of the user and the workspace it belongs to.',
+    risk: 'read',
+    examples: [{}],
+    identifierFormats: [],
+    safetyNotes: ['Every call runs as the Outline user who owns the API key, with that user’s permissions.'],
+    keywords: ['connection', 'forbindelse', 'whoami', 'me', 'workspace', 'hvem'],
+  },
+  {
+    id: 'outline_search_documents',
+    title: 'Search Outline documents',
+    description: 'Full-text search in the documents the user can read, with a context snippet per hit. Optionally within one collection.',
+    risk: 'read',
+    examples: [{ query: 'onboarding checklist' }, { query: 'vpn', collectionId: 'collection-id' }],
+    identifierFormats: ['collectionId (optional)'],
+    safetyNotes: ['Only documents the API key’s user can read.'],
+    keywords: ['search', 'søg', 'find', 'wiki', 'dokument'],
+  },
+  {
+    id: 'outline_list_documents',
+    title: 'List Outline documents',
+    description: 'List published documents, newest first, optionally in one collection or under one parent document.',
+    risk: 'read',
+    examples: [{}, { collectionId: 'collection-id' }, { parentDocumentId: 'document-id' }],
+    identifierFormats: ['collectionId or parentDocumentId (optional)'],
+    safetyNotes: [],
+    keywords: ['documents', 'dokumenter', 'liste', 'recent', 'sider'],
+  },
+  {
+    id: 'outline_get_document',
+    title: 'Get Outline document',
+    description: 'Fetch one document with its text as Markdown.',
+    risk: 'read',
+    examples: [{ id: 'document-id' }],
+    identifierFormats: ['document id or url slug'],
+    safetyNotes: [],
+    keywords: ['read', 'læs', 'document', 'markdown', 'indhold'],
+  },
+  {
+    id: 'outline_list_collections',
+    title: 'List Outline collections',
+    description: 'List the collections (top-level knowledge areas) the user can see.',
+    risk: 'read',
+    examples: [{}],
+    identifierFormats: [],
+    safetyNotes: [],
+    keywords: ['collections', 'samlinger', 'områder', 'kategorier'],
+  },
+  {
+    id: 'outline_get_collection',
+    title: 'Get Outline collection',
+    description: 'Fetch one collection, optionally with its tree of document titles.',
+    risk: 'read',
+    examples: [{ id: 'collection-id', includeStructure: true }],
+    identifierFormats: ['collection id'],
+    safetyNotes: [],
+    keywords: ['collection', 'struktur', 'indholdsfortegnelse', 'tree'],
+  },
+  {
+    id: 'outline_list_comments',
+    title: 'List Outline comments',
+    description: 'List the comments on one document, as plain text.',
+    risk: 'read',
+    examples: [{ documentId: 'document-id' }],
+    identifierFormats: ['documentId'],
+    safetyNotes: [],
+    keywords: ['comments', 'kommentarer', 'feedback'],
+  },
+  {
+    id: 'outline_list_revisions',
+    title: 'List Outline revisions',
+    description: 'List the version history of one document: who changed it and when, without the text of each version.',
+    risk: 'read',
+    examples: [{ documentId: 'document-id' }],
+    identifierFormats: ['documentId'],
+    safetyNotes: [],
+    keywords: ['revisions', 'versioner', 'historik', 'history'],
+  },
+  {
+    id: 'outline_create_document',
+    title: 'Create Outline document',
+    description: 'Create a document with a title and a Markdown text in a collection, optionally under a parent document. A draft unless publish is true.',
+    risk: 'write',
+    examples: [{ collectionId: 'collection-id', title: 'Ny vejledning', text: '# Overskrift\n\nIndhold', publish: true }],
+    identifierFormats: ['text is Markdown'],
+    safetyNotes: ['A published document is visible to everyone who can read the collection.'],
+    keywords: ['create', 'opret', 'ny side', 'skriv', 'document'],
+  },
+  {
+    id: 'outline_update_document',
+    title: 'Update Outline document',
+    description: 'Change a document’s title, or add text to its end; textMode "replace" replaces the whole text.',
+    risk: 'write',
+    examples: [{ id: 'document-id', text: '\n## Tilføjelse' }, { id: 'document-id', text: 'Ny tekst', textMode: 'replace' }],
+    identifierFormats: ['textMode: append (default) | replace'],
+    safetyNotes: ['With textMode "replace" the whole text is replaced; Outline keeps the earlier version in the history.'],
+    keywords: ['update', 'ret', 'rediger', 'edit', 'append', 'tilføj'],
+  },
+  {
+    id: 'outline_create_comment',
+    title: 'Comment on Outline document',
+    description: 'Add a comment to a document, or reply to a comment with parentCommentId.',
+    risk: 'write',
+    examples: [{ documentId: 'document-id', text: 'Ser godt ud' }],
+    identifierFormats: ['parentCommentId (optional, for replies)'],
+    safetyNotes: ['Colleagues who can read the document see the comment.'],
+    keywords: ['comment', 'kommentér', 'svar', 'feedback'],
+  },
+];
+
+export function searchCapabilities(
+  query: string,
+  limit = 20,
+  pool: readonly OutlineCapability[] = OUTLINE_CAPABILITIES,
+): OutlineCapability[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
-    return OUTLINE_CAPABILITIES.slice(0, limit);
+    return pool.slice(0, limit);
   }
-  return OUTLINE_CAPABILITIES.map(capability => ({ capability, score: scoreCapability(capability, normalized) }))
+  return pool.map(capability => ({ capability, score: scoreCapability(capability, normalized) }))
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || a.capability.id.localeCompare(b.capability.id))
     .slice(0, limit)

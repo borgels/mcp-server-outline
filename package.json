@@ -1,12 +1,16 @@
 {
   "name": "mcp-server-outline",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "mcpName": "io.github.borgels/mcp-server-outline",
   "description": "MCP server for the Outline knowledge base (wiki) API.",
   "type": "module",
   "main": "./dist/stdio.js",
   "exports": {
-    ".": "./dist/stdio.js"
+    ".": "./dist/stdio.js",
+    "./gateway": {
+      "types": "./dist/gateway.d.ts",
+      "default": "./dist/gateway.js"
+    }
   },
   "files": [
     "dist",
@@ -19,7 +23,7 @@
     "mcp-server-outline": "./dist/stdio.js"
   },
   "scripts": {
-    "build": "tsup src/transports/stdio.ts src/transports/http.ts --format esm --dts --clean --sourcemap",
+    "build": "tsup --entry.stdio src/transports/stdio.ts --entry.http src/transports/http.ts --entry.gateway src/gateway.ts --format esm --dts --clean --sourcemap",
     "dev": "tsx src/transports/stdio.ts",
     "dev:http": "tsx src/transports/http.ts",
     "typecheck": "tsc --noEmit",
@@ -41,7 +45,7 @@
   "author": "",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22.19.0"
   },
   "bugs": {
     "url": "https://github.com/borgels/mcp-server-outline/issues"
@@ -49,6 +53,8 @@
   "homepage": "https://github.com/borgels/mcp-server-outline#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "ipaddr.js": "2.5.0",
+    "undici": "8.12.3",
     "zod": "^4.6.7"
   },
   "overrides": {
