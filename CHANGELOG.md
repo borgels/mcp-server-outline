@@ -1,8 +1,46 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-20)
 
+The gateway entry point (`./gateway`) in the shape of `mcp-server-template`,
+for hosts that run one instance per tenant in a shared process.
+
+### Changes
+
+- `createOutlineGateway({ apiToken, baseUrl, fetchImpl?, timeoutMs?, resolveHost?, policy? })`:
+  the API key and the customer's Outline address are required and never read
+  from the environment; the gateway reads no `OUTLINE_*` variable.
+- `normalizeOutlineBaseUrl(url)`: https and a public host name only (no user
+  info, port, path, query or fragment, no IP address or local name). Every
+  connection of a gateway goes only to public addresses, checked by DNS per
+  connection (built-in fetch) or before every request (host fetch).
+- Tools: reads `search_capabilities`, `check_connection`, `search_documents`,
+  `list_documents`, `get_document`, `list_collections`, `get_collection`,
+  `list_comments`, `list_revisions`; writes (off by default)
+  `create_document` (a draft unless `publish`), `update_document` (adds text
+  to the end unless `textMode: "replace"`), `create_comment`. No delete,
+  archive, move, collection or sharing tools, no raw API call. Results hold a
+  fixed set of fields per object (no email addresses, policies or share
+  links).
+- `outlineToolCatalog`: deeply frozen, with `inputSchema` from the strict zod
+  schema, `upstream` and `broad`.
+- Key admission (real `ol_api_` keys are accepted), host policy
+  `{ enableWrites, disabledTools, audit }`, call scopes, redaction per
+  instance, the sink check and sealed construction errors, as in the
+  template.
+- Errors are our own text: `Outline API request failed with HTTP <status>`
+  with our hint and `retry-after`; Outline's error bodies are no longer read,
+  also in the MCP server. Redirects, network failures and timeouts are worded
+  by us and quote neither the address nor the redirect's `Location`.
+- The audit records an error as a fixed code (`http_<status>`, `timeout`,
+  `error`) instead of its message, also in the MCP server.
 - Published to npm and the MCP Registry from tagged releases.
+
+### Upgrade notes
+
+- Node 22.19 or later (the gateway uses `undici` and `ipaddr.js`).
+- MCP server error texts no longer include Outline's error message or the
+  redirect target.
 
 ## 0.2.0 (2026-11-16)
 

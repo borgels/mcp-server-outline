@@ -1,6 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
-import { formatUnknownError } from '../errors.js';
 import { writeAuditEvent } from '../outline/audit.js';
 import { READ_TOOL_ANNOTATIONS, WRITE_TOOL_ANNOTATIONS, searchCapabilities } from '../outline/capabilities.js';
 import type { OutlineClient } from '../outline/client.js';
@@ -329,7 +328,8 @@ export function registerOutlineTools(server: McpServer, client: OutlineClient): 
   );
 }
 
-async function run<T>(tool: string, input: unknown, call: () => Promise<T>): Promise<T> {
+/** Policy, audit and the call, as every MCP server tool and gateway tool runs. */
+export async function run<T>(tool: string, input: unknown, call: () => Promise<T>): Promise<T> {
   const policy = checkToolPolicy(tool);
   const target = auditTarget(input);
   if (!policy.allowed) {
@@ -342,7 +342,8 @@ async function run<T>(tool: string, input: unknown, call: () => Promise<T>): Pro
     await writeAuditEvent({ tool, action: 'finish', target, status: 'ok' });
     return result;
   } catch (error) {
-    await writeAuditEvent({ tool, action: 'error', target, status: 'error', error: formatUnknownError(error) });
+    // The error object itself: the audit classifies it into a fixed code (http_<status>, timeout or error).
+    await writeAuditEvent({ tool, action: 'error', target, status: 'error', error });
     throw error;
   }
 }
@@ -356,12 +357,13 @@ function auditTarget(input: unknown): unknown {
     collectionId: v.collectionId,
     revisionId: v.revisionId,
     parentDocumentId: v.parentDocumentId,
+    parentCommentId: v.parentCommentId,
     action: v.action,
     filter: v.filter,
     query: v.query,
   };
 }
 
-function json(data: unknown) {
+export function json(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
