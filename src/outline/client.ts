@@ -1,5 +1,5 @@
 import { ConfigError, readEnvInteger } from '../config-env.js';
-import { OutlineHttpError, registerSecret } from '../errors.js';
+import { OutlineHttpError, registerSecret, requestIdFrom } from '../errors.js';
 import { describeUrl, discardBody, isRedirect, type SecretRedactor } from '../upstream-http.js';
 import { isPublicAddress, pinnedFetch, systemResolve, type ResolveHost } from './network.js';
 
@@ -147,6 +147,7 @@ export class OutlineClient {
         status: response.status,
         url: describeUrl(url),
         retryAfter: response.headers.get('retry-after') ?? undefined,
+        requestId: requestIdFrom(response.headers),
       });
     }
     return (await this.readBody(response)) as T;
