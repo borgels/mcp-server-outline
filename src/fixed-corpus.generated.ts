@@ -228,6 +228,7 @@ export const FIXED_CORPUS: readonly string[] = [
   "Outline revisions.",
   "Outline search results.",
   "OutlineHttpError",
+  "OutlineRedirectError",
   "POST, OPTIONS",
   "Parse error: request body is not valid JSON",
   "Payload too large",

@@ -1,5 +1,5 @@
 import { ConfigError, readEnvInteger } from '../config-env.js';
-import { OutlineHttpError, registerSecret, requestIdFrom } from '../errors.js';
+import { OutlineHttpError, OutlineRedirectError, registerSecret, requestIdFrom } from '../errors.js';
 import { describeUrl, discardBody, isRedirect, type SecretRedactor } from '../upstream-http.js';
 import { isPublicAddress, pinnedFetch, systemResolve, type ResolveHost } from './network.js';
 
@@ -126,9 +126,10 @@ export class OutlineClient {
 
     if (response.type === 'opaqueredirect' || isRedirect(response.status)) {
       await discardBody(response);
-      throw new Error(
+      throw new OutlineRedirectError(
         `Outline API responded with a redirect (HTTP ${response.status}); redirects are not followed. ` +
           'Check that the Outline address is the final https:// address of the workspace.',
+        { status: response.status, requestId: requestIdFrom(response.headers) },
       );
     }
 

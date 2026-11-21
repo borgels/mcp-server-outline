@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 (2026-11-21)
+
+- A refused redirect from Outline is an HTTP answer from Outline too: its
+  gateway error result now also has `failure: { httpStatus, requestId? }`.
+
 ## 0.4.0 (2026-11-21)
 
 - Gateway error results carry failure metadata: when Outline answered with

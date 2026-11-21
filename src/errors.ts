@@ -88,6 +88,23 @@ export class OutlineHttpError extends Error {
 }
 
 /**
+ * A redirect from Outline, refused (it is never followed): our own text, the status of the answer and its request
+ * id, nothing else of the response.
+ */
+export class OutlineRedirectError extends Error {
+  readonly status: number;
+  /** Outline's own id for the request, when a response header gives one as a UUID or hex id. */
+  readonly requestId?: string;
+
+  constructor(message: string, input: { status: number; requestId?: string }) {
+    super(message);
+    this.name = 'OutlineRedirectError';
+    this.status = input.status;
+    this.requestId = vendorRequestId(input.requestId);
+  }
+}
+
+/**
  * Response headers that carry the vendor's own id for a request, most specific first. Outline documents no header of its own, so
  * this is the common list.
  */
@@ -139,9 +156,12 @@ export interface FailureMetadata {
   requestId?: string;
 }
 
-/** The failure metadata of an error: an HTTP error from Outline gives its status and request id. */
+/**
+ * The failure metadata of an error: an HTTP error from Outline (a refused redirect included) gives its status and
+ * request id.
+ */
 export function failureMetadata(error: unknown): FailureMetadata | undefined {
-  if (!(error instanceof OutlineHttpError)) return undefined;
+  if (!(error instanceof OutlineHttpError) && !(error instanceof OutlineRedirectError)) return undefined;
   const status: unknown = error.status;
   if (typeof status !== 'number' || !Number.isInteger(status) || status < 100 || status > 599) return undefined;
   const requestId = vendorRequestId(error.requestId);
