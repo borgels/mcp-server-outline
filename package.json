@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-outline",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "mcpName": "io.github.borgels/mcp-server-outline",
   "description": "MCP server for the Outline knowledge base (wiki) API.",
   "type": "module",
