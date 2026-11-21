@@ -179,8 +179,8 @@ followed by our own hint (400, 401, 403, 404, 429) and the parsed
 `Outline answered with something that is not JSON`, `Refused: the Outline
 address points to a private or local network address.`, or a policy
 refusal (`writes are disabled. ...`, `tool is disabled on this instance by
-the embedding host: <tool>`). When Outline answered with an HTTP error, the
-error result also has `failure: { httpStatus, requestId? }`: the status, and
+the embedding host: <tool>`). When Outline answered with an HTTP error (a
+refused redirect included), the error result also has `failure: { httpStatus, requestId? }`: the status, and
 Outline's request id from a response header (`REQUEST_ID_HEADERS` in
 `src/errors.ts`) only when it is a hex id of 8 to 64 characters (one run of
 hex digits, or groups of four or more joined by single hyphens, as in a
